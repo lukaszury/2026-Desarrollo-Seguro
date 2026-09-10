@@ -1,6 +1,5 @@
 package com.cinebuscador.controller;
 
-import com.cinebuscador.config.EncryptionService;
 import com.cinebuscador.repository.UserRepository;
 import com.cinebuscador.model.User;
 import org.springframework.stereotype.Controller;
@@ -8,11 +7,13 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 @Controller
 public class AuthController {
 
     private final UserRepository userRepository;
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public AuthController(UserRepository userRepository) {
         this.userRepository = userRepository;
@@ -32,9 +33,7 @@ public class AuthController {
         User user = userRepository.findByUsername(username).orElse(null);
 
         if (user != null) {
-            // Descifrar la contraseña almacenada y comparar con la ingresada
-            String decryptedPassword = EncryptionService.decrypt(user.getPassword());
-            if (password.equals(decryptedPassword)) {
+            if (passwordEncoder.matches(password, user.getPassword())) {
                 model.addAttribute("loginSuccess", true);
                 model.addAttribute("welcomeUser", username);
                 model.addAttribute("encryptedPassword", user.getPassword());
@@ -65,12 +64,11 @@ public class AuthController {
 
         com.cinebuscador.model.User nuevoUsuario = new com.cinebuscador.model.User();
         nuevoUsuario.setUsername(username);
-        nuevoUsuario.setPassword(EncryptionService.encrypt(password));
+        nuevoUsuario.setPassword(passwordEncoder.encode(password));
         userRepository.save(nuevoUsuario);
 
         model.addAttribute("registerSuccess", true);
         model.addAttribute("registeredUsername", username);
-        model.addAttribute("encryptedPassword", EncryptionService.encrypt(password));
         addForms(model);
         return "index";
     }

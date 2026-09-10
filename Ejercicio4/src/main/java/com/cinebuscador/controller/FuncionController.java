@@ -17,12 +17,10 @@ import java.util.stream.Collectors;
 public class FuncionController {
 
     private final FuncionRepository funcionRepo;
-    private final SpelEvaluator spelEval;
 
     @Autowired
     public FuncionController(FuncionRepository funcionRepo, SpelEvaluator spelEval) {
         this.funcionRepo = funcionRepo;
-        this.spelEval = spelEval;
     }
 
     @GetMapping("/")
@@ -31,29 +29,19 @@ public class FuncionController {
         model.addAttribute("query", buscar != null ? buscar : "");
 
         if (buscar == null || buscar.isBlank()) {
-            System.out.println("buscar es: " + buscar);
-            // Mostrar todas las funciones si no hay busqueda
             List<Funcion> todas = funcionRepo.findAll();
             model.addAttribute("resultados", todas);
             model.addAttribute("mensaje", "Mostrando todas las funciones.");
             return "index";
         }
 
-        String spelResultado = spelEval.evaluate(buscar);
-
-        model.addAttribute("spelOutput", spelResultado);
-
-        if (!spelResultado.isBlank()) {
-            List<Funcion> resultados = funcionRepo.findAll().stream()
+        List<Funcion> resultados = funcionRepo.findAll().stream()
                 .filter(f -> f.getNombreFuncion() != null &&
-                             f.getNombreFuncion().toLowerCase().contains(spelResultado.toLowerCase()))
+                        f.getNombreFuncion().toLowerCase().contains(buscar.toLowerCase()))
                 .collect(Collectors.toList());
-            model.addAttribute("resultados", resultados);
-            model.addAttribute("mensaje", "Resultados buscando por: " + spelResultado);
-        } else {
-            model.addAttribute("resultados", new ArrayList<Funcion>());
-            model.addAttribute("mensaje", "No se encontraron coincidencias.");
-        }
+
+        model.addAttribute("resultados", resultados);
+        model.addAttribute("mensaje", "Resultados buscando por: " + buscar);
 
         return "index";
     }
