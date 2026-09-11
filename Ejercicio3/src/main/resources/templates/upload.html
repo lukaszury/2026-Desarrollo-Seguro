@@ -40,7 +40,7 @@
               th:action="@{/upload/{id}(id=${pelicula.id})}"
               enctype="multipart/form-data">
             <label for="afiche">Seleccionar archivo:</label>
-            <input type="file" name="afiche" id="afiche" accept="*/*" required>
+            <input type="file" name="afiche" id="afiche" accept="image/jpeg,image/png,image/webp" required>
             <br><br>
             <button type="submit">Subir afiche</button>
         </form>
