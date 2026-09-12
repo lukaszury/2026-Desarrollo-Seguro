@@ -60,9 +60,7 @@ El parámetro `buscar` (querystring de `GET /`) se concatena directamente dentro
 
    La condición `'1'='1'` es siempre verdadera, por lo que la cláusula `WHERE` deja de filtrar y **se devuelven todas las funciones de todas las películas**, sin importar el texto buscado.
 
-**Captura sugerida (`ej1_poc1_bypass.png`):** navegador o `curl -v` mostrando la URL con el payload y la respuesta con el listado completo de películas/funciones (dejar visible la barra de direcciones o el comando `curl` usado, y la tabla de resultados).
-
-![PoC bypass SQLi con OR 1=1](ej1_poc1_bypass.png)
+![PoC bypass SQLi con OR 1=1](capturas/ej1_poc1_bypass.png)
 
 ### PoC 2 — Exfiltración de datos vía `UNION SELECT` (extraer el esquema de la base)
 
@@ -88,9 +86,7 @@ El `SELECT` vulnerable devuelve 3 columnas (`pelicula`, `fecha_hora`, `disponibl
 
    El `--` comenta el resto de la sentencia (incluido el `ORDER BY` original), y el `UNION SELECT` agrega como resultados el nombre y el DDL (`CREATE TABLE ...`) de cada tabla de la base, mostrando el esquema completo sin tener ningún permiso ni credencial. El mismo mecanismo permite reemplazar `sqlite_master` por cualquier otra tabla de la base (por ejemplo, credenciales, si existieran) para exfiltrar sus datos.
 
-**Captura sugerida (`ej1_poc2_union_schema.png`):** respuesta de la aplicación mostrando, en las columnas "película"/"fecha_hora", el nombre y el `CREATE TABLE` de las tablas internas (evidencia de que se filtró el esquema de la base y no solo películas).
-
-![PoC UNION SELECT esquema de la base](ej1_poc2_union_schema.png)
+![PoC UNION SELECT esquema de la base](capturas/ej1_poc2_union_schema.png)
 
 ### Impacto
 
@@ -115,9 +111,7 @@ return db.execute(sql, (f'%{query}%',)).fetchall()
 
 `sort_by` ya estaba (y sigue estando) protegido mediante una whitelist explícita (el operador ternario solo admite `'peliculas.nombre'` o `'funciones.fecha_hora'`), por lo que no es inyectable.
 
-**Captura sugerida (`ej1_mitigado.png`):** repetición de la PoC 1 (`' OR '1'='1`) contra el código de `practico-2`, mostrando que ahora no devuelve resultados (la cadena se busca literalmente como texto).
-
-![Ejercicio 1 mitigado - SQLi bloqueada](ej1_mitigado.png)
+![Ejercicio 1 mitigado - SQLi bloqueada](capturas/ej1_mitigado.png)
 
 > **Nota / hallazgo adicional (no forma parte del punto pedido, queda como observación):** el parámetro `sentido` (`sort_dir`) se sigue insertando sin validar directamente en la cláusula `ORDER BY`. No es explotable para exfiltrar datos por esta vía tan directamente como `buscar` (SQLite no permite múltiples sentencias en `execute()`), pero sí permite inyectar expresiones dentro del `ORDER BY` (p. ej. subconsultas condicionales) para una inyección ciega booleana. Si se quiere cerrar por completo, se recomienda aplicar la misma whitelist que ya existe para `sort_by` (aceptar únicamente `"ASC"`/`"DESC"`, cualquier otro valor cae a un default seguro).
 
@@ -149,17 +143,13 @@ El filtro `| safe` de Jinja2 le indica al motor de templates que **no** escape e
    <script>alert('XSS')</script>
    ```
 
-   **Captura sugerida (`ej2_poc_payload_ingresado.png`):** formulario de edición con el payload escrito en el campo Descripción, antes de enviar.
-
-![Payload XSS ingresado en el formulario](ej2_poc_payload_ingresado.png)
+![Payload XSS ingresado en el formulario](capturas/ej2_poc_payload_ingresado.png)
 
 3. Enviar el formulario (`POST /edit/<id>`), que guarda el valor tal cual en la base de datos (`UPDATE peliculas SET ... descripcion=? ...`, ya parametrizado — el problema no es al guardar sino al mostrar).
 4. Volver a entrar a `GET /edit/<id>` (por ejemplo, recargando la página o volviendo a hacer clic en "Editar" sobre esa película). Al renderizar `edit.html`, el bloque `{{ pelicula['descripcion'] | safe }}` inyecta el `<script>` tal cual en el HTML de la respuesta y el navegador lo ejecuta, mostrando el `alert('XSS')`.
 5. Cualquier otro usuario (o administrador) que abra la página de edición de esa misma película ejecuta el script sin haberlo escrito él mismo — de ahí que sea **XSS persistente/almacenado**: el payload queda guardado en la base y se dispara cada vez que alguien visita esa vista.
 
-**Captura sugerida (`ej2_poc_alert_disparado.png`):** el popup de `alert('XSS')` disparándose en el navegador al volver a cargar `GET /edit/<id>` (idealmente en una segunda visita/recarga, para dejar claro que el script se ejecuta solo, sin volver a escribirlo).
-
-![Alert XSS disparándose](ej2_poc_alert_disparado.png)
+![Alert XSS disparándose](capturas/ej2_poc_alert_disparado.png)
 
 Un payload más dañino que un `alert()` podría robar la cookie de sesión (`document.cookie`) y enviarla a un servidor externo, o realizar acciones en nombre del usuario que visualiza la página (por ejemplo, enviar el propio formulario de edición con datos manipulados).
 
@@ -180,11 +170,7 @@ Se eliminó el filtro `| safe`:
 
 Sin `| safe`, Jinja2 aplica el autoescape por defecto y convierte `<`, `>`, `&`, comillas, etc. en sus entidades HTML (`&lt;script&gt;...`), por lo que el navegador muestra el texto tal cual fue escrito en lugar de interpretarlo como marcado/script.
 
-**Captura sugerida (`ej2_mitigado.png`):** repetición de la PoC contra `practico-2` — la página de edición mostrando el texto literal `<script>alert('XSS')</script>` (sin ejecutarse) y, opcionalmente, el HTML fuente de la respuesta (`Ver código fuente` del navegador o `curl`) evidenciando las entidades `&lt;`/`&gt;`.
-
-![Ejercicio 2 mitigado - script escapado](ej2_mitigado.png)
-
-> **Nota / hallazgo adicional (fuera del alcance de este ejercicio, queda como observación):** el archivo `Ejercicio2/app.py` incluye una copia de `buscar_funciones()` con la misma inyección SQL del Ejercicio 1 (`WHERE peliculas.nombre LIKE '%{query}%'`), que **no fue parametrizada** en esta rama porque no es el objetivo de este ejercicio (que es XSS). Se deja documentado por si se quiere aplicar la misma corrección del Ejercicio 1 por consistencia.
+![Ejercicio 2 mitigado - script escapado](capturas/ej2_mitigado.png)
 
 ---
 
@@ -236,15 +222,13 @@ No se valida el contenido real del archivo, ni su tipo MIME, ni su extensión, n
 
 3. La aplicación acepta el archivo sin verificar su contenido real y lo guarda en el directorio de uploads con el nombre original (`afiche_falso.jpg`), asociándolo como afiche válido de la película.
 
-   **Captura sugerida (`ej3_poc_upload_aceptado.png`):** respuesta del `curl` (o la pantalla luego del submit del formulario) mostrando el `redirect:/` / código `200`, evidenciando que el servidor aceptó el archivo de texto como si fuera una imagen válida.
+![Upload de archivo falso aceptado](capturas/ej3_poc_upload_aceptado.png)
 
-![Upload de archivo falso aceptado](ej3_poc_upload_aceptado.png)
+![Archivo falso guardado en el directorio de uploads del servidor](capturas/ej3_poc_upload_aceptado2.png)
 
 4. Se puede confirmar accediendo a `http://localhost:8080/uploads/afiche_falso.jpg`: el servidor sirve el contenido de texto plano como si fuera un afiche.
 
-   **Captura sugerida (`ej3_poc_archivo_servido.png`):** el navegador (o `curl -i`) mostrando que `/uploads/afiche_falso.jpg` devuelve el texto plano del archivo (no una imagen), o el ícono de "imagen rota" si se accede desde el `<img>` de la ficha de la película — evidencia de que un archivo no-imagen quedó publicado como afiche.
-
-![Archivo falso servido como imagen](ej3_poc_archivo_servido.png)
+![Archivo falso servido como imagen](capturas/ej3_poc_archivo_servido.png)
 
 Con la misma técnica se podría subir, por ejemplo, un archivo `.jsp`/`.html`/`.svg` renombrado con extensión de imagen (o incluso sin cambiar nada si el filtro solo mira el `Content-Type` declarado por el cliente, que es trivial de falsificar), abriendo la puerta a XSS almacenado (si se sirve `.html`/`.svg` con contenido interpretado por el navegador) o, en configuraciones más permisivas del servidor, a ejecución remota de código si el archivo cae dentro de un directorio servido como código ejecutable.
 
@@ -283,9 +267,7 @@ Files.copy(archivo.getInputStream(), uploadPath.resolve(nombreSeguro));
 
 Repitiendo la PoC contra `practico-2`, la subida de `afiche_falso.jpg` (contenido de texto plano) responde `400 Bad Request` ("El archivo no es una imagen válida") y no se guarda ningún archivo.
 
-**Captura sugerida (`ej3_mitigado.png`):** respuesta `400 Bad Request` con el mensaje "El archivo no es una imagen válida" al repetir la PoC contra `practico-2`, y opcionalmente el directorio de uploads mostrando que no se creó ningún archivo nuevo.
-
-![Ejercicio 3 mitigado - upload rechazado](ej3_mitigado.png)
+![Ejercicio 3 mitigado - upload rechazado](capturas/ej3_mitigado.png)
 
 > El atributo `accept="image/jpeg,image/png,image/webp"` agregado en `upload.html` es solo una ayuda de UX en el navegador (evitable por cualquier atacante armando el request a mano, como en la PoC); la protección real está en el servidor.
 
@@ -329,9 +311,7 @@ El texto ingresado en el buscador se pasa tal cual a `SpelExpressionParser.parse
 
 3. La aplicación no busca ninguna función cuyo nombre sea literalmente "7 * 7": en cambio, el mensaje resultante muestra `49`, evidenciando que el servidor evaluó la expresión matemática en lugar de tratarla como texto plano.
 
-**Captura sugerida (`ej4_poc1_calculo.png`):** buscador con `7 * 7` ingresado y el mensaje de resultado mostrando `49`.
-
-![PoC SSTI cálculo 7 por 7](ej4_poc1_calculo.png)
+![PoC SSTI cálculo 7 por 7](capturas/ej4_poc1_calculo.png)
 
 ### PoC 2 — Ejecución de comandos en el servidor (RCE) vía `Runtime`
 
@@ -349,9 +329,7 @@ Como el contexto expone `runtime` (`Runtime.class`) y permite invocar métodos e
 
 2. SpEL resuelve `T(java.lang.Runtime)` como referencia a la clase `Runtime`, y con `StandardEvaluationContext` se permite invocar `getRuntime().exec(...)`, lanzando el proceso `id` en el servidor. El resultado que se ve en pantalla es el `Process` object (su `toString()`), pero el comando ya se ejecutó del lado del servidor con los permisos del proceso Java — se puede confirmar mirando los logs del contenedor o, para una prueba más contundente, apuntando el comando a escribir un archivo (`exec('touch /tmp/poc_ssti')`) y verificando su existencia dentro del contenedor.
 
-**Captura sugerida (`ej4_poc2_rce.png`):** dos capturas en una: (a) la petición con `T(java.lang.Runtime).getRuntime().exec('touch /tmp/poc_ssti')` enviada al buscador, y (b) una terminal con `docker exec cinebuscador4 ls -la /tmp/poc_ssti` mostrando que el archivo fue creado dentro del contenedor — esta segunda parte es la evidencia real de RCE (la primera por sí sola solo muestra el `Process` object en pantalla).
-
-![PoC SSTI ejecución de comando](ej4_poc2_rce.png)
+![PoC SSTI ejecución de comando](capturas/ej4_poc2_rce.png)
 
 ### Impacto
 
@@ -372,9 +350,7 @@ public String evaluate(String expression) {
 
 Repitiendo la PoC 1 contra `practico-2`, el buscador con `7 * 7` ya no devuelve `49`: busca literalmente funciones cuyo nombre contenga el texto `"7 * 7"` (sin resultados), y la PoC 2 (`T(java.lang.Runtime)...`) tampoco ejecuta ningún proceso: se trata como una cadena de búsqueda más.
 
-**Captura sugerida (`ej4_mitigado.png`):** buscador con `7 * 7` contra `practico-2`, mostrando que el mensaje ahora dice algo como "buscando por: 7 * 7" (texto literal) y no `49`.
-
-![Ejercicio 4 mitigado - búsqueda literal](ej4_mitigado.png)
+![Ejercicio 4 mitigado - búsqueda literal](capturas/ej4_mitigado.png)
 
 Se documenta además en el propio código que, si en el futuro se necesitara evaluar expresiones dinámicas reales, debe usarse `SimpleEvaluationContext` (que no permite invocar constructores arbitrarios ni acceder a tipos vía reflexión) en lugar de `StandardEvaluationContext`, y nunca construir la expresión a evaluar a partir de input de usuario sin una whitelist estricta de expresiones permitidas.
 
@@ -405,28 +381,26 @@ Las contraseñas no se hashean: se **cifran de forma reversible** con AES en mod
 
 ### PoC — Recuperar la contraseña en texto plano a partir de la base de datos
 
-1. Levantar el servicio y registrar un usuario de prueba desde `http://localhost:8080/` (formulario de registro), por ejemplo `usuario=poc_user`, `password=SuperSecreta123`.
-2. La aplicación guarda en la tabla `usuarios` el valor de `EncryptionService.encrypt("SuperSecreta123")`, un Base64 como por ejemplo `Q2FudGlkYWQgZGUgZWplbXBsbw==` (el valor real se puede ver en pantalla, ya que `AuthController` lo expone en `model.addAttribute("encryptedPassword", ...)`, o consultando directamente la base H2).
+1. Levantar el servicio y registrar un usuario de prueba desde `http://localhost:8080/` (formulario de registro): `usuario=poc_user`, `password=SuperSecreta123`.
+2. El valor cifrado se lee directamente de la propia aplicación: `AuthController` lo expone en pantalla (`model.addAttribute("encryptedPassword", ...)`) apenas se hace **login** con ese usuario. Iniciando sesión con `poc_user` / `SuperSecreta123` se obtiene el valor real guardado en la tabla `usuarios`, en este caso `XGawXx7aZonujlapC17K2w==`.
 
-   **Captura sugerida (`ej5_poc_password_cifrada.png`):** pantalla de registro exitoso mostrando el valor Base64 de la contraseña "cifrada" (`encryptedPassword`), o la consola H2 (`http://localhost:8080/h2-console`, si está habilitada) mostrando el contenido de la tabla `usuarios`.
+![Contraseña cifrada reversible en la base](capturas/ej5_poc_password_cifrada.png)
 
-![Contraseña cifrada reversible en la base](ej5_poc_password_cifrada.png)
 3. Como la clave `MySup3rS3cr3tK3y!2024CineBuscadorAES` está fija en el código fuente (visible para cualquiera con acceso al repositorio, o recuperable del `.jar` compilado con un decompilador), un atacante puede descifrar ese valor **sin necesidad de acceder a la aplicación en ejecución**, por ejemplo reutilizando el propio método `decrypt`, o replicando el cifrado con OpenSSL:
 
    ```bash
    # Clave en hexadecimal (32 bytes, AES-256), derivada de la constante del código:
-   echo -n "MySup3rS3cr3tK3y!2024CineBuscadorAES" | head -c 32 | xxd -p | tr -d '\n'
+   echo -n 'MySup3rS3cr3tK3y!2024CineBuscadorAES' | head -c 32 | xxd -p | tr -d '\n'
+   # -> 4d7953757033725333637233744b3379213230323443696e654275736361646f
 
    # Descifrado del valor guardado en la base (ECB, sin IV):
-   echo "Q2FudGlkYWQgZGUgZWplbXBsbw==" | base64 -d | \
-     openssl enc -d -aes-256-ecb -K <CLAVE_HEX> -nopad
+   echo "XGawXx7aZonujlapC17K2w==" | base64 -d | \
+     openssl enc -d -aes-256-ecb -K 4d7953757033725333637233744b3379213230323443696e654275736361646f
    ```
 
-4. El resultado es la contraseña original en texto plano (`SuperSecreta123`), recuperada exclusivamente a partir del volcado de la base de datos y del código fuente (o del `.jar`), sin haber comprometido nunca la sesión del usuario ni intentado un ataque de fuerza bruta.
+4. El resultado es la contraseña original en texto plano (`SuperSecreta123`), recuperada exclusivamente a partir del valor guardado y del código fuente, sin haber comprometido nunca la sesión del usuario ni intentado un ataque de fuerza bruta.
 
-   **Captura sugerida (`ej5_poc_password_descifrada.png`):** terminal mostrando el comando `openssl` y su salida con `SuperSecreta123` en texto plano, junto al valor cifrado del paso anterior, para dejar en evidencia la correspondencia.
-
-![Contraseña descifrada en texto plano](ej5_poc_password_descifrada.png)
+![Contraseña descifrada en texto plano](capturas/ej5_poc_password_descifrada.png)
 
 Como agravante, al usar **ECB sin IV**, dos usuarios con la misma contraseña producen exactamente el mismo texto cifrado, lo que permite a un atacante con solo acceso a la base de datos (sin la clave) detectar contraseñas repetidas entre cuentas por simple comparación de los valores almacenados.
 
@@ -459,42 +433,4 @@ Se agregó la dependencia correspondiente en `pom.xml`:
 
 Con este cambio: (a) no existe ninguna clave que filtrar — no hay forma de "descifrar" un hash BCrypt; (b) cada hash incluye su propio salt, por lo que dos usuarios con la misma contraseña obtienen valores almacenados distintos; y (c) el login sigue funcionando porque `matches()` verifica la contraseña ingresada contra el hash sin necesidad de recuperar el valor original. Repitiendo la PoC contra `practico-2`, el valor guardado en la base es un hash BCrypt (`$2a$10$...`) y no existe ningún procedimiento (ni con la clave del código viejo, que ya no existe) para recuperar la contraseña en texto plano a partir de él.
 
-**Captura sugerida (`ej5_mitigado.png`):** registro del mismo usuario de prueba contra `practico-2`, mostrando el hash BCrypt (`$2a$10$...`) guardado en lugar del Base64 reversible, y opcionalmente un login exitoso posterior para demostrar que la verificación sigue funcionando.
-
-![Ejercicio 5 mitigado - hash BCrypt](ej5_mitigado.png)
-
----
-
-## Anexo — Listado de capturas a incluir
-
-Cada captura se referencia inline en su sección correspondiente con `![...](nombre-archivo.png)`, junto a un breve texto (`**Captura sugerida (archivo.png):** ...`) que indica qué debe mostrarse. Este listado es solo un resumen de referencia rápida antes de entregar:
-
-| Archivo | Ejercicio | Qué debe mostrar |
-|---|---|---|
-| `ej1_poc1_bypass.png` | 1 — SQLi | Request con `' OR '1'='1` y la respuesta con todas las películas |
-| `ej1_poc2_union_schema.png` | 1 — SQLi | Resultado del `UNION SELECT` mostrando el esquema (`sqlite_master`) |
-| `ej1_mitigado.png` | 1 — SQLi | Misma PoC contra `practico-2`, sin resultados |
-| `ej2_poc_payload_ingresado.png` | 2 — XSS | Formulario de edición con el `<script>` escrito, antes de guardar |
-| `ej2_poc_alert_disparado.png` | 2 — XSS | El `alert('XSS')` disparándose al recargar la edición |
-| `ej2_mitigado.png` | 2 — XSS | Texto del script mostrado literalmente (escapado), sin ejecutarse |
-| `ej3_poc_upload_aceptado.png` | 3 — File Upload | El `.txt` renombrado a `.jpg` aceptado por el servidor |
-| `ej3_poc_archivo_servido.png` | 3 — File Upload | `/uploads/afiche_falso.jpg` sirviendo texto plano, no una imagen |
-| `ej3_mitigado.png` | 3 — File Upload | `400 Bad Request` al repetir la subida contra `practico-2` |
-| `ej4_poc1_calculo.png` | 4 — SSTI | Búsqueda `7 * 7` devolviendo `49` |
-| `ej4_poc2_rce.png` | 4 — SSTI | Payload `Runtime.exec(...)` + evidencia del archivo creado dentro del contenedor |
-| `ej4_mitigado.png` | 4 — SSTI | Búsqueda `7 * 7` tratada como texto literal en `practico-2` |
-| `ej5_poc_password_cifrada.png` | 5 — Almacenamiento inseguro | Contraseña guardada en Base64 (AES/ECB reversible) |
-| `ej5_poc_password_descifrada.png` | 5 — Almacenamiento inseguro | Descifrado por `openssl` mostrando la contraseña en texto plano |
-| `ej5_mitigado.png` | 5 — Almacenamiento inseguro | Hash BCrypt guardado en `practico-2`, y login funcionando |
-
----
-
-## Resumen
-
-| # | Vulnerabilidad | CWE | Estado en `practico-2` |
-|---|---|---|---|
-| 1 | SQL Injection | CWE-89 | Mitigado (consulta parametrizada) |
-| 2 | XSS almacenado | CWE-79 | Mitigado (se removió `\| safe`) |
-| 3 | File Upload inseguro | CWE-434 | Mitigado (validación de contenido real + whitelist + tamaño + nombre seguro) |
-| 4 | SSTI (SpEL Injection) | CWE-1336/917 | Mitigado (se eliminó la evaluación de expresiones sobre input de usuario) |
-| 5 | Almacenamiento inseguro de contraseñas | CWE-321/257 | Mitigado (BCrypt, se removió el cifrado reversible y la clave estática) |
+![Ejercicio 5 mitigado - hash BCrypt](capturas/ej5_mitigado.png)
